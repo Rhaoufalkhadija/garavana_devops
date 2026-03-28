@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME    = "VOTRE_DOCKERHUB/flask-app"
+        IMAGE_NAME    = "khadija127/flask-app"
         DOCKER_CREDS  = credentials('dockerhub-creds')
         K8S_NAMESPACE = "default"
     }
@@ -12,7 +12,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 echo "Clonage du dépôt..."
-                git url: 'https://github.com/VOTRE_USER/garavana.git', branch: 'main'
+                git url: 'https://github.com/khadija127/garavana.git', branch: 'main'
             }
         }
 
@@ -52,11 +52,11 @@ pipeline {
             steps {
                 echo "Déploiement sur Kubernetes..."
                 sh """
-                    kubectl set image deployment/flask-app \
+                    /usr/local/bin/k3s kubectl set image deployment/flask-app \
                         flask-app=${IMAGE_NAME}:${BUILD_NUMBER} \
                         -n ${K8S_NAMESPACE}
 
-                    kubectl rollout status deployment/flask-app \
+                    /usr/local/bin/k3s kubectl rollout status deployment/flask-app \
                         -n ${K8S_NAMESPACE} \
                         --timeout=120s
                 """
@@ -67,8 +67,8 @@ pipeline {
             steps {
                 echo "Vérification du déploiement..."
                 sh """
-                    kubectl get pods -n ${K8S_NAMESPACE} -l app=flask-app
-                    kubectl get svc flask-service -n ${K8S_NAMESPACE}
+                    /usr/local/bin/k3s kubectl get pods -n ${K8S_NAMESPACE} -l app=flask-app
+                    /usr/local/bin/k3s kubectl get svc flask-service -n ${K8S_NAMESPACE}
                 """
             }
         }
