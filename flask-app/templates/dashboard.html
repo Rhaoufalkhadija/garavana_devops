@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Garavana — DevOps Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f1117;
+      --bg2:      #161b27;
+      --bg3:      #1e2535;
+      --border:   rgba(255,255,255,0.07);
+      --text:     #e2e8f0;
+      --muted:    #7c8fa6;
+      --green:    #1D9E75;
+      --green-bg: rgba(29,158,117,0.12);
+      --amber:    #EF9F27;
+      --amber-bg: rgba(239,159,39,0.12);
+      --red:      #E24B4A;
+      --red-bg:   rgba(226,75,74,0.12);
+      --blue:     #378ADD;
+      --blue-bg:  rgba(55,138,221,0.12);
+      --radius:   10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    .dash { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+
+    /* ── Top bar ── */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .brand { font-size: 20px; font-weight: 600; color: var(--text); }
+    .brand span { color: var(--green); }
+    .brand small { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 8px; }
+    .pill {
+      display: flex; align-items: center; gap: 7px;
+      background: var(--green-bg); border: 1px solid rgba(29,158,117,0.25);
+      border-radius: 20px; padding: 5px 14px; font-size: 12px; color: var(--green);
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .dot { animation: pulse 2s infinite; }
+    .btn-refresh {
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 14px; font-size: 12px;
+      color: var(--muted); cursor: pointer; margin-left: 10px; transition: background .2s;
+    }
+    .btn-refresh:hover { background: var(--bg2); color: var(--text); }
+
+    /* ── Metric cards ── */
+    .metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 20px; }
+    .metric {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 18px;
+    }
+    .metric-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .metric-val { font-size: 26px; font-weight: 600; line-height: 1; }
+    .metric-sub { font-size: 12px; margin-top: 5px; }
+    .ok  { color: var(--green); }
+    .warn{ color: var(--amber); }
+    .bad { color: var(--red); }
+    .inf { color: var(--blue); }
+
+    /* ── Panels ── */
+    .grid2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .panel {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px;
+    }
+    .panel-title {
+      font-size: 11px; font-weight: 600; letter-spacing: .8px;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 14px;
+    }
+
+    /* ── Build list ── */
+    .builds { display: flex; flex-direction: column; gap: 7px; }
+    .build-row {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--bg3); border-radius: 8px; padding: 9px 12px; font-size: 13px;
+    }
+    .b-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .b-success { background: var(--green); }
+    .b-fail    { background: var(--red); }
+    .b-running { background: var(--amber); animation: pulse 1s infinite; }
+    .b-name { flex: 1; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .b-time { color: var(--muted); font-size: 12px; }
+    .b-dur  { color: var(--muted); font-size: 12px; min-width: 42px; text-align: right; }
+    .badge {
+      font-size: 11px; font-weight: 600; padding: 2px 9px;
+      border-radius: 10px; letter-spacing: .3px; flex-shrink: 0;
+    }
+    .badge-ok   { background: var(--green-bg); color: var(--green); }
+    .badge-fail { background: var(--red-bg);   color: var(--red); }
+    .badge-run  { background: var(--amber-bg); color: var(--amber); }
+
+    /* ── Pod list ── */
+    .pods { display: flex; flex-direction: column; gap: 7px; }
+    .pod-row {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--bg3); border-radius: 8px; padding: 9px 12px; font-size: 13px;
+    }
+    .pod-name { font-weight: 500; color: var(--text); }
+    .pod-ns   { font-size: 11px; color: var(--muted); }
+    .pod-bars { display: flex; gap: 14px; align-items: center; }
+    .bar-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+    .bar-label { font-size: 11px; color: var(--muted); }
+    .bar-track { width: 70px; height: 5px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; }
+    .bar-fill  { height: 100%; border-radius: 3px; transition: width .6s ease; }
+    .bar-g  { background: var(--green); }
+    .bar-a  { background: var(--amber); }
+    .bar-b  { background: var(--blue); }
+
+    /* ── Node cards ── */
+    .nodes-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 16px; }
+    .node-card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px;
+    }
+    .node-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .node-name { font-weight: 600; font-size: 14px; }
+    .role-badge { font-size: 11px; padding: 2px 9px; border-radius: 10px; }
+    .role-master { background: var(--blue-bg);  color: var(--blue); }
+    .role-worker { background: var(--bg3);       color: var(--muted); }
+    .gauge-row { margin-bottom: 10px; }
+    .gauge-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .gauge-track { height: 6px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; }
+    .gauge-fill  { height: 100%; border-radius: 3px; transition: width .8s ease; }
+    .node-ip { font-size: 11px; color: var(--muted); margin-top: 10px; font-family: monospace; }
+
+    /* ── Charts ── */
+    .chart-wrap { position: relative; height: 150px; }
+
+    /* ── Footer ── */
+    .footer {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 12px; color: var(--muted); padding-top: 14px;
+      border-top: 1px solid var(--border); margin-top: 4px;
+    }
+
+    @media (max-width: 900px) {
+      .metrics { grid-template-columns: repeat(2,1fr); }
+      .grid2   { grid-template-columns: 1fr; }
+      .nodes-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="dash">
+
+  <div class="topbar">
+    <div class="brand">garavana<span>.io</span><small>— DevOps Dashboard</small></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="pill"><div class="dot"></div>Cluster opérationnel</div>
+      <button class="btn-refresh" onclick="refresh()">↻ Actualiser</button>
+    </div>
+  </div>
+
+  <!-- Métriques -->
+  <div class="metrics">
+    <div class="metric">
+      <div class="metric-label">Builds aujourd'hui</div>
+      <div class="metric-val" id="m-builds">12</div>
+      <div class="metric-sub ok" id="m-bsub">↑ +3 vs hier</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Taux de succès</div>
+      <div class="metric-val ok" id="m-rate">91%</div>
+      <div class="metric-sub ok">Pipeline stable</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Pods actifs</div>
+      <div class="metric-val" id="m-pods">6 / 6</div>
+      <div class="metric-sub ok">Tous Running</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Dernier déploiement</div>
+      <div class="metric-val inf" style="font-size:18px;padding-top:4px">v1.4.2</div>
+      <div class="metric-sub inf" id="m-deptime">Il y a 23 min</div>
+    </div>
+  </div>
+
+  <!-- Builds + Pipeline -->
+  <div class="grid2">
+    <div class="panel">
+      <div class="panel-title">Historique des builds Jenkins</div>
+      <div class="chart-wrap"><canvas id="buildChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Derniers pipelines</div>
+      <div class="builds" id="build-list"></div>
+    </div>
+  </div>
+
+  <!-- Pods + CPU -->
+  <div class="grid2">
+    <div class="panel">
+      <div class="panel-title">Pods Kubernetes</div>
+      <div class="pods" id="pod-list"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">CPU par nœud (temps réel)</div>
+      <div class="chart-wrap"><canvas id="cpuChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Nœuds -->
+  <div class="panel-title" style="font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:12px">Nœuds du cluster</div>
+  <div class="nodes-grid" id="node-grid"></div>
+
+  <div class="footer">
+    <span id="last-refresh">Dernière mise à jour : au chargement</span>
+    <span>Flask App · k3s · Jenkins · AWS us-east-1</span>
+  </div>
+
+</div>
+
+<script>
+const builds = [
+  {name:'main → flask-app',status:'success',time:'14:32',dur:'2m18s'},
+  {name:'feature/health-ep', status:'running',time:'14:51',dur:'--'},
+  {name:'main → flask-app',status:'success',time:'13:10',dur:'2m04s'},
+  {name:'fix/cors-header',  status:'fail',   time:'12:45',dur:'1m33s'},
+  {name:'main → flask-app',status:'success',time:'11:02',dur:'2m11s'},
+];
+const pods = [
+  {name:'flask-app-7d4f8b',ns:'default',    cpu:34,mem:42},
+  {name:'flask-app-9c2a1e',ns:'default',    cpu:28,mem:38},
+  {name:'jenkins-0',       ns:'devops',     cpu:61,mem:55},
+  {name:'coredns-5c4b7f',  ns:'kube-system',cpu:12,mem:18},
+  {name:'traefik-d8f9b',   ns:'kube-system',cpu:9, mem:14},
+  {name:'metrics-server',  ns:'kube-system',cpu:5, mem:10},
+];
+let nodes = [
+  {name:'k8s-master',role:'master',cpu:61,mem:55,disk:42,ip:'10.0.1.10'},
+  {name:'k8s-worker',role:'worker',cpu:34,mem:40,disk:28,ip:'10.0.1.11'},
+  {name:'jenkins-ec2',role:'worker',cpu:48,mem:52,disk:35,ip:'10.0.1.12'},
+];
+
+function bClass(s){return s==='success'?'b-success':s==='fail'?'b-fail':'b-running';}
+function bdgClass(s){return s==='success'?'badge-ok':s==='fail'?'badge-fail':'badge-run';}
+function bdgLabel(s){return s==='success'?'OK':s==='fail'?'FAIL':'EN COURS';}
+function gColor(v){return v>70?'var(--red)':v>50?'var(--amber)':'var(--green)';}
+function barClass(v){return v>60?'bar-a':'bar-g';}
+
+function renderBuilds(){
+  document.getElementById('build-list').innerHTML = builds.map(b=>`
+    <div class="build-row">
+      <div class="b-dot ${bClass(b.status)}"></div>
+      <div class="b-name">${b.name}</div>
+      <span class="badge ${bdgClass(b.status)}">${bdgLabel(b.status)}</span>
+      <div class="b-time">${b.time}</div>
+      <div class="b-dur">${b.dur}</div>
+    </div>`).join('');
+}
+
+function renderPods(){
+  document.getElementById('pod-list').innerHTML = pods.map(p=>`
+    <div class="pod-row">
+      <div><div class="pod-name">${p.name}</div><div class="pod-ns">${p.ns}</div></div>
+      <div class="pod-bars">
+        <div class="bar-wrap">
+          <div class="bar-label">CPU ${p.cpu}%</div>
+          <div class="bar-track"><div class="bar-fill ${barClass(p.cpu)}" style="width:${p.cpu}%"></div></div>
+        </div>
+        <div class="bar-wrap">
+          <div class="bar-label">MEM ${p.mem}%</div>
+          <div class="bar-track"><div class="bar-fill bar-b" style="width:${p.mem}%"></div></div>
+        </div>
+        <span class="badge badge-ok">Running</span>
+      </div>
+    </div>`).join('');
+}
+
+function renderNodes(){
+  document.getElementById('node-grid').innerHTML = nodes.map(n=>`
+    <div class="node-card">
+      <div class="node-head">
+        <div class="node-name">${n.name}</div>
+        <span class="role-badge ${n.role==='master'?'role-master':'role-worker'}">${n.role}</span>
+      </div>
+      <div class="gauge-row">
+        <div class="gauge-label"><span>CPU</span><span>${n.cpu}%</span></div>
+        <div class="gauge-track"><div class="gauge-fill" style="width:${n.cpu}%;background:${gColor(n.cpu)}"></div></div>
+      </div>
+      <div class="gauge-row">
+        <div class="gauge-label"><span>Mémoire</span><span>${n.mem}%</span></div>
+        <div class="gauge-track"><div class="gauge-fill" style="width:${n.mem}%;background:${gColor(n.mem)}"></div></div>
+      </div>
+      <div class="gauge-row">
+        <div class="gauge-label"><span>Disque</span><span>${n.disk}%</span></div>
+        <div class="gauge-track"><div class="gauge-fill" style="width:${n.disk}%;background:${gColor(n.disk)}"></div></div>
+      </div>
+      <div class="node-ip">${n.ip}</div>
+    </div>`).join('');
+}
+
+let buildChart, cpuChart;
+const hours = ['10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30'];
+const masterCPU = [55,58,61,59,63,60,61,61,63,61];
+const workerCPU = [28,31,30,33,32,30,34,34,35,34];
+
+function initCharts(){
+  const tc = '#7c8fa6';
+  const gc = 'rgba(255,255,255,0.05)';
+
+  buildChart = new Chart(document.getElementById('buildChart').getContext('2d'),{
+    type:'bar',
+    data:{
+      labels: hours,
+      datasets:[
+        {label:'Succès', data:[1,2,1,2,2,1,3,2,2,2], backgroundColor:'#1D9E75', borderRadius:3, barPercentage:.6},
+        {label:'Échecs', data:[0,0,1,0,0,0,0,1,0,0], backgroundColor:'#E24B4A', borderRadius:3, barPercentage:.6}
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:tc,font:{size:11},boxWidth:10}}},
+      scales:{
+        x:{grid:{color:gc},ticks:{color:tc,font:{size:10}},stacked:true},
+        y:{grid:{color:gc},ticks:{color:tc,font:{size:10},stepSize:1},stacked:true,min:0,max:4}
+      }
+    }
+  });
+
+  cpuChart = new Chart(document.getElementById('cpuChart').getContext('2d'),{
+    type:'line',
+    data:{
+      labels: hours,
+      datasets:[
+        {label:'master', data:[...masterCPU], borderColor:'#378ADD', backgroundColor:'transparent', tension:.4, pointRadius:2, borderWidth:2},
+        {label:'worker', data:[...workerCPU], borderColor:'#1D9E75', backgroundColor:'transparent', tension:.4, pointRadius:2, borderWidth:2}
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:tc,font:{size:11},boxWidth:10}}},
+      scales:{
+        x:{grid:{color:gc},ticks:{color:tc,font:{size:10}}},
+        y:{grid:{color:gc},ticks:{color:tc,font:{size:10},callback:v=>v+'%'},min:0,max:100}
+      }
+    }
+  });
+}
+
+function jitter(v){ return Math.max(5, Math.min(95, v + Math.round((Math.random()-.5)*12))); }
+
+function refresh(){
+  const now = new Date();
+  document.getElementById('last-refresh').textContent =
+    'Dernière mise à jour : ' + now.toLocaleTimeString('fr-FR');
+
+  nodes = nodes.map(n=>({...n, cpu:jitter(n.cpu), mem:jitter(n.mem)}));
+  pods.forEach(p=>{p.cpu=jitter(p.cpu); p.mem=jitter(p.mem);});
+
+  renderNodes(); renderPods();
+
+  if(cpuChart){
+    const t = now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    cpuChart.data.labels.push(t); cpuChart.data.labels.shift();
+    cpuChart.data.datasets[0].data.push(nodes[0].cpu); cpuChart.data.datasets[0].data.shift();
+    cpuChart.data.datasets[1].data.push(nodes[1].cpu); cpuChart.data.datasets[1].data.shift();
+    cpuChart.update();
+  }
+}
+
+renderBuilds(); renderPods(); renderNodes();
+initCharts();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

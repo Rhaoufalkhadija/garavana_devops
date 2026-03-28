@@ -1,0 +1,89 @@
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME    = "VOTRE_DOCKERHUB/flask-app"
+        DOCKER_CREDS  = credentials('dockerhub-creds')
+        K8S_NAMESPACE = "default"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                echo "Clonage du dépôt..."
+                git url: 'https://github.com/VOTRE_USER/garavana.git', branch: 'main'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo "Construction de l'image Docker..."
+                dir('flask-app') {
+                    sh "docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} ."
+                    sh "docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${IMAGE_NAME}:latest"
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo "Exécution des tests..."
+                sh """
+                    docker run --rm \
+                        ${IMAGE_NAME}:${BUILD_NUMBER} \
+                        sh -c "pip install pytest -q && pytest test_app.py -v"
+                """
+            }
+        }
+
+        stage('Push') {
+            steps {
+                echo "Push vers Docker Hub..."
+                sh """
+                    echo ${DOCKER_CREDS_PSW} | docker login -u ${DOCKER_CREDS_USR} --password-stdin
+                    docker push ${IMAGE_NAME}:${BUILD_NUMBER}
+                    docker push ${IMAGE_NAME}:latest
+                """
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                echo "Déploiement sur Kubernetes..."
+                sh """
+                    kubectl set image deployment/flask-app \
+                        flask-app=${IMAGE_NAME}:${BUILD_NUMBER} \
+                        -n ${K8S_NAMESPACE}
+
+                    kubectl rollout status deployment/flask-app \
+                        -n ${K8S_NAMESPACE} \
+                        --timeout=120s
+                """
+            }
+        }
+
+        stage('Verify') {
+            steps {
+                echo "Vérification du déploiement..."
+                sh """
+                    kubectl get pods -n ${K8S_NAMESPACE} -l app=flask-app
+                    kubectl get svc flask-service -n ${K8S_NAMESPACE}
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Déploiement v${BUILD_NUMBER} réussi !"
+        }
+        failure {
+            echo "Échec du pipeline. Vérifiez les logs."
+        }
+        always {
+            sh "docker rmi ${IMAGE_NAME}:${BUILD_NUMBER} || true"
+            sh "docker logout || true"
+        }
+    }
+}

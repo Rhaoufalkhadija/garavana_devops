@@ -1,0 +1,42 @@
+---
+- name: Installer Docker sur tous les noeuds
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Mise à jour des paquets
+      yum:
+        name: "*"
+        state: latest
+
+    - name: Installer Docker
+      yum:
+        name: docker
+        state: present
+
+    - name: Démarrer et activer Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Ajouter ec2-user au groupe docker
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+
+    - name: Installer python3 et pip
+      yum:
+        name:
+          - python3
+          - python3-pip
+        state: present
+
+    - name: Vérifier Docker
+      command: docker --version
+      register: docker_version
+
+    - name: Afficher la version Docker
+      debug:
+        msg: "{{ docker_version.stdout }}"

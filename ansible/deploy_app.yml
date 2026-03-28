@@ -1,0 +1,60 @@
+---
+- name: Déployer l'application Garavana sur Kubernetes
+  hosts: master
+  become: true
+
+  vars:
+    dockerhub_user: "sofya"
+    app_version: "latest"
+    k8s_namespace: "default"
+
+  tasks:
+    - name: Créer le répertoire de manifests sur le master
+      file:
+        path: /home/ec2-user/garavana/k8s
+        state: directory
+        owner: ec2-user
+        mode: '0755'
+
+    - name: Copier le manifest Deployment
+      copy:
+        src: ../k8s/deployment.yml
+        dest: /home/ec2-user/garavana/k8s/deployment.yml
+        owner: ec2-user
+
+    - name: Copier le manifest Service
+      copy:
+        src: ../k8s/service.yml
+        dest: /home/ec2-user/garavana/k8s/service.yml
+        owner: ec2-user
+
+    - name: Remplacer l'image dans le deployment
+      replace:
+        path: /home/ec2-user/garavana/k8s/deployment.yml
+        regexp: 'VOTRE_DOCKERHUB'
+        replace: "{{ dockerhub_user }}"
+
+    - name: Appliquer le Deployment
+      command: /usr/local/bin/k3s kubectl apply -f /home/ec2-user/garavana/k8s/deployment.yml
+      register: deploy_result
+
+    - name: Appliquer le Service
+      command: /usr/local/bin/k3s kubectl apply -f /home/ec2-user/garavana/k8s/service.yml
+      register: svc_result
+
+    - name: Attendre que les pods soient prêts
+      command: >
+        /usr/local/bin/k3s kubectl rollout status deployment/flask-app
+        -n {{ k8s_namespace }} --timeout=120s
+
+    - name: Afficher l'état des pods
+      command: /usr/local/bin/k3s kubectl get pods -n {{ k8s_namespace }} -l app=flask-app
+      register: pods_status
+
+    - name: Afficher les pods
+      debug:
+        msg: "{{ pods_status.stdout }}"
+
+    - name: Afficher l'URL du service
+      debug:
+        msg: "Dashboard disponible sur http://{{ ansible_host }}:30080/dashboard"

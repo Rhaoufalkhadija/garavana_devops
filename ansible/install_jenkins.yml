@@ -1,0 +1,85 @@
+---
+- name: Installer Jenkins sur le noeud master
+  hosts: master
+  become: true
+
+  tasks:
+    - name: Installer Java 17
+      yum:
+        name: java-17-amazon-corretto
+        state: present
+
+    - name: Configurer Java 17 par défaut
+      alternatives:
+        name: java
+        path: /usr/lib/jvm/java-17-amazon-corretto.x86_64/bin/java
+
+    - name: Ajouter le repo Jenkins
+      get_url:
+        url: https://pkg.jenkins.io/redhat-stable/jenkins.repo
+        dest: /etc/yum.repos.d/jenkins.repo
+        force: yes
+
+    - name: Importer la clé GPG Jenkins
+      rpm_key:
+        key: https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+        state: present
+
+    - name: Installer Jenkins
+      yum:
+        name: jenkins
+        state: present
+
+    - name: Corriger le fichier service Jenkins pour Amazon Linux 2
+      ini_file:
+        path: /usr/lib/systemd/system/jenkins.service
+        section: Service
+        option: TimeoutStartSec
+        value: "300"
+        no_extra_spaces: yes
+
+    - name: Supprimer StartLimitBurst incompatible
+      lineinfile:
+        path: /usr/lib/systemd/system/jenkins.service
+        regexp: '^StartLimitBurst'
+        state: absent
+
+    - name: Supprimer StartLimitIntervalSec incompatible
+      lineinfile:
+        path: /usr/lib/systemd/system/jenkins.service
+        regexp: '^StartLimitIntervalSec'
+        state: absent
+
+    - name: Recharger systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Démarrer et activer Jenkins
+      systemd:
+        name: jenkins
+        state: started
+        enabled: true
+
+    - name: Attendre que Jenkins soit prêt (port 8080)
+      wait_for:
+        port: 8080
+        timeout: 300
+
+    - name: Récupérer le mot de passe initial Jenkins
+      command: cat /var/lib/jenkins/secrets/initialAdminPassword
+      register: jenkins_pwd
+
+    - name: Afficher le mot de passe initial
+      debug:
+        msg: "Mot de passe Jenkins = {{ jenkins_pwd.stdout }}"
+
+    - name: Ajouter jenkins au groupe docker
+      user:
+        name: jenkins
+        groups: docker
+        append: yes
+
+    - name: Redémarrer Jenkins après ajout au groupe docker
+      systemd:
+        name: jenkins
+        state: restarted
