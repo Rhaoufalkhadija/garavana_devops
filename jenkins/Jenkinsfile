@@ -12,7 +12,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 echo "Clonage du dépôt..."
-                git url: 'https://github.com/khadija127/garavana.git', branch: 'main'
+                git url: 'https://github.com/Rhaoufalkhadija/garavana_devops.git', branch: 'main'
             }
         }
 
